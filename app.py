@@ -4,47 +4,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import io
-from PIL import Image
-
-# --------------------------------------------------
-# Gradient Descent Animation (GIF using Pillow)
-# --------------------------------------------------
-def animate_gd(x, y, b0_hist, b1_hist):
-    frames = []
-    x_line = np.linspace(np.min(x), np.max(x), 100)
-
-    for i in range(len(b0_hist)):
-        fig, ax = plt.subplots(figsize=(6, 4))
-        ax.scatter(x, y, color='blue', label="Data Points")
-
-        y_line = b0_hist[i] + b1_hist[i] * x_line
-        ax.plot(x_line, y_line, 'r-', linewidth=2, label="GD Step")
-
-        ax.set_title(f"Gradient Descent (Step {i+1}/{len(b0_hist)})")
-        ax.set_xlabel("X")
-        ax.set_ylabel("Y")
-        ax.legend()
-
-        # Convert this frame to image buffer
-        buf = io.BytesIO()
-        plt.savefig(buf, format="png", dpi=80)
-        buf.seek(0)
-        frames.append(Image.open(buf))
-        plt.close(fig)
-
-    # Save all frames into GIF
-    gif_buf = io.BytesIO()
-    frames[0].save(
-        gif_buf,
-        format="GIF",
-        save_all=True,
-        append_images=frames[1:],
-        duration=80,
-        loop=0
-    )
-    gif_buf.seek(0)
-    return gif_buf
-
 
 # --------------------------------------------------
 # Stable Gradient Descent with Normalization
@@ -58,10 +17,8 @@ def gradient_descent_normalized(x, y, lr=0.01, n_iters=1000):
     for i in range(n_iters):
         y_pred = b0 + b1 * x
         error = y - y_pred
-
         cost = (1 / (2 * n)) * np.sum(error ** 2)
 
-        # Stop if diverging
         if np.isnan(cost) or cost > 1e8:
             break
 
@@ -79,7 +36,6 @@ def gradient_descent_normalized(x, y, lr=0.01, n_iters=1000):
         cost_hist.append(cost)
 
     return np.array(b0_hist), np.array(b1_hist), np.array(cost_hist)
-
 
 # --------------------------------------------------
 # Cost Surface Plot
@@ -104,7 +60,6 @@ def plot_cost_surface(b0_hist, b1_hist, x, y):
     ax.set_title("Gradient Descent Path on Cost Surface")
     ax.legend()
     return fig
-
 
 # --------------------------------------------------
 # STREAMLIT APP
@@ -136,6 +91,7 @@ def main():
     # ---------------------------
     st.header("2️⃣ Select Feature & Target")
     col1, col2 = st.columns(2)
+    
     with col1:
         x_col = st.selectbox("Feature (X)", numeric_cols)
     with col2:
@@ -214,16 +170,29 @@ def main():
         st.pyplot(fig2)
 
         # ---------------------------
-        # GD Animation
+        # Regression Line at ANY GD Step
         # ---------------------------
-        st.header("🎞️ Gradient Descent Line Animation")
-        with st.spinner("Creating animation..."):
-            gif_buf = animate_gd(x_raw, y_raw, b0_hist, b1_hist)
-        st.image(gif_buf)
+        st.header("📈 Regression Line at Selected GD Step")
+        iter_idx = st.slider("Select iteration", 0, len(b0_hist)-1, len(b0_hist)-1)
+
+        fig_step, ax_step = plt.subplots(figsize=(6,4))
+        ax_step.scatter(x_raw, y_raw, color='blue')
+
+        x_line = np.linspace(np.min(x_raw), np.max(x_raw), 100)
+        y_line_step = b0_hist[iter_idx] + b1_hist[iter_idx] * x_line
+        ax_step.plot(x_line, y_line_step, 'g-', linewidth=2, 
+                     label=f"Line at Iteration {iter_idx}")
+
+        ax_step.set_xlabel(x_col)
+        ax_step.set_ylabel(y_col)
+        ax_step.legend()
+        st.pyplot(fig_step)
 
         # ---------------------------
-        # Convert Back to Original Scale
+        # Final Regression Line
         # ---------------------------
+        st.header("📈 Final Regression Line (Best Fit)")
+
         b0_norm = b0_hist[-1]
         b1_norm = b1_hist[-1]
 
@@ -231,6 +200,18 @@ def main():
         final_b0 = y_mean + y_std * b0_norm - final_b1 * x_mean
 
         st.success(f"📌 Final Model:  ŷ = {final_b0:.4f} + {final_b1:.4f} × X")
+
+        fig_final, ax_final = plt.subplots(figsize=(6,4))
+        ax_final.scatter(x_raw, y_raw, color='blue', label="Data Points")
+
+        x_line = np.linspace(np.min(x_raw), np.max(x_raw), 100)
+        y_line_final = final_b0 + final_b1 * x_line
+        ax_final.plot(x_line, y_line_final, 'r-', linewidth=2, label="Final Regression Line")
+
+        ax_final.set_xlabel(x_col)
+        ax_final.set_ylabel(y_col)
+        ax_final.legend()
+        st.pyplot(fig_final)
 
         # Predictions
         y_pred = final_b0 + final_b1 * x_raw
