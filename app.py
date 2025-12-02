@@ -3,6 +3,36 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from matplotlib.animation import FuncAnimation
+import io
+
+def animate_gd(x, y, b0_hist, b1_hist):
+    fig, ax = plt.subplots(figsize=(6,4))
+
+    ax.scatter(x, y, color='blue', label='Data points')
+    line, = ax.plot([], [], 'r-', linewidth=2, label="Model")
+    ax.legend()
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_title("Gradient Descent Line Movement (Animation)")
+
+    x_line = np.linspace(np.min(x), np.max(x), 100)
+
+    def update(frame):
+        b0 = b0_hist[frame]
+        b1 = b1_hist[frame]
+        y_line = b0 + b1 * x_line
+        line.set_data(x_line, y_line)
+        return line,
+
+    anim = FuncAnimation(fig, update, frames=len(b0_hist), interval=60)
+
+    # Save animation to GIF in memory buffer
+    buf = io.BytesIO()
+    anim.save(buf, writer='pillow', format='gif')
+    buf.seek(0)
+    plt.close(fig)
+    return buf
 
 # --------------------------------------------------
 # Gradient Descent (Stable Version with Normalization)
@@ -64,6 +94,23 @@ def plot_cost_surface(b0_hist, b1_hist, x, y):
     ax.legend()
     ax.set_title("Gradient Descent Path on Cost Surface")
     return fig
+# ------------------------------------
+# GD ANIMATION
+# ------------------------------------
+st.header("🎞️ Gradient Descent Animation of Regression Line")
+
+x_raw = st.session_state["x_raw"]
+y_raw = st.session_state["y_raw"]
+
+with st.spinner("Generating animation..."):
+    anim_buf = animate_gd(
+        x_raw,
+        y_raw,
+        st.session_state["b0_hist"],
+        st.session_state["b1_hist"]
+    )
+
+st.image(anim_buf, caption="Gradient Descent Line Convergence Animation")
 
 
 # --------------------------------------------------
