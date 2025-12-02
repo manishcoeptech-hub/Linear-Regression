@@ -2,42 +2,28 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 # --------------------------------------------------
 # Helper: Batch Gradient Descent for Simple Linear Regression
 # --------------------------------------------------
 def gradient_descent(x, y, lr=0.01, n_iters=1000):
-    """
-    x, y: 1D numpy arrays
-    lr: learning rate
-    n_iters: number of iterations
-    Returns:
-        b0_hist, b1_hist, cost_hist
-    """
     n = len(x)
-    b0 = 0.0
-    b1 = 0.0
+    b0, b1 = 0.0, 0.0
 
-    b0_hist = []
-    b1_hist = []
-    cost_hist = []
+    b0_hist, b1_hist, cost_hist = [], [], []
 
-    for i in range(n_iters):
+    for _ in range(n_iters):
         y_pred = b0 + b1 * x
         error = y - y_pred
 
-        # Mean Squared Error cost
         cost = (1 / (2 * n)) * np.sum(error ** 2)
-
-        # Gradients
         db0 = -(1 / n) * np.sum(error)
         db1 = -(1 / n) * np.sum(error * x)
 
-        # Parameter update
-        b0 = b0 - lr * db0
-        b1 = b1 - lr * db1
+        b0 -= lr * db0
+        b1 -= lr * db1
 
-        # Store history
         b0_hist.append(b0)
         b1_hist.append(b1)
         cost_hist.append(cost)
@@ -46,242 +32,161 @@ def gradient_descent(x, y, lr=0.01, n_iters=1000):
 
 
 # --------------------------------------------------
-# Helper: Closed-form (Normal Equation) for Comparison
+# Closed-form for comparison
 # --------------------------------------------------
 def closed_form_solution(x, y):
-    x_mean = np.mean(x)
-    y_mean = np.mean(y)
-
+    x_mean, y_mean = np.mean(x), np.mean(y)
     num = np.sum((x - x_mean) * (y - y_mean))
     den = np.sum((x - x_mean) ** 2)
     if den == 0:
-        return 0.0, y_mean
+        return y_mean, 0
     b1 = num / den
     b0 = y_mean - b1 * x_mean
     return b0, b1
 
 
 # --------------------------------------------------
+# Visualize Gradient Descent on Cost Function Space
+# --------------------------------------------------
+def plot_cost_surface(b0_hist, b1_hist, x, y):
+    b0_vals = np.linspace(min(b0_hist)-1, max(b0_hist)+1, 50)
+    b1_vals = np.linspace(min(b1_hist)-1, max(b1_hist)+1, 50)
+
+    B0, B1 = np.meshgrid(b0_vals, b1_vals)
+    cost_grid = np.zeros_like(B0)
+
+    for i in range(B0.shape[0]):
+        for j in range(B0.shape[1]):
+            y_pred = B0[i, j] + B1[i, j] * x
+            cost_grid[i, j] = np.mean((y - y_pred) ** 2) / 2
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    contour = ax.contour(B0, B1, cost_grid, levels=30)
+    ax.plot(b0_hist, b1_hist, 'r.-', label="Gradient Descent Path")
+    ax.set_xlabel("b0")
+    ax.set_ylabel("b1")
+    ax.set_title("Gradient Descent on Cost Function Surface")
+    ax.legend()
+
+    return fig
+
+
+# --------------------------------------------------
 # Streamlit App
 # --------------------------------------------------
 def main():
-    st.set_page_config(page_title="Linear Regression Lab", layout="wide")
-    st.title("📊 Linear Regression Learning Lab")
-    st.write(
-        "Upload a dataset, run **gradient descent**, and visualize "
-        "cost, parameters, and convergence step by step."
-    )
+    st.set_page_config(page_title="Advanced Linear Regression Lab", layout="wide")
+    st.title("📊 Linear Regression Complete Learning Lab")
 
-    # Sidebar: controls
-    st.sidebar.header("⚙️ Settings")
-    lr = st.sidebar.slider("Learning Rate (α)", 0.0001, 1.0, 0.05, step=0.0001)
-    n_iters = st.sidebar.slider("Iterations", 10, 5000, 500, step=10)
-    show_details = st.sidebar.checkbox("Show detailed calculations for current step", value=True)
+    st.write("Upload a dataset → Train model → Visualize Gradient Descent → Evaluate performance → Predict.")
 
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("**Tip:** Start with a small learning rate like 0.01 or 0.05.")
+    st.header("1️⃣ Upload Training Excel File")
+    uploaded_file = st.file_uploader("Upload Excel (.xlsx/.xls)", type=["xlsx", "xls"])
 
-    # File uploader
-    st.subheader("1️⃣ Upload your Excel file")
-    uploaded_file = st.file_uploader("Upload an Excel file (.xlsx or .xls)", type=["xlsx", "xls"])
-
-    if uploaded_file is None:
-        st.info("Please upload an Excel file to begin.")
-        return
-
-    # Read Excel
-    try:
+    if uploaded_file:
         df = pd.read_excel(uploaded_file)
-    except Exception as e:
-        st.error(f"Error reading file: {e}")
-        return
+        st.write("### Preview of Training Data")
+        st.dataframe(df.head())
 
-    st.write("### Preview of Data")
-    st.dataframe(df.head())
+        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        if len(numeric_cols) < 2:
+            st.error("Need at least two numeric columns.")
+            return
 
-    # Select columns
-    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    if len(numeric_cols) < 2:
-        st.error("Need at least two numeric columns (one feature X and one target Y).")
-        return
+        st.header("2️⃣ Select Feature & Target")
+        col1, col2 = st.columns(2)
+        with col1:
+            x_col = st.selectbox("Feature (X)", numeric_cols)
+        with col2:
+            y_col = st.selectbox("Target (Y)", [c for c in numeric_cols if c != x_col])
 
-    st.subheader("2️⃣ Select feature (X) and target (Y)")
-    col1, col2 = st.columns(2)
-    with col1:
-        feature_col = st.selectbox("Select feature column (X)", numeric_cols)
-    with col2:
-        target_col = st.selectbox("Select target column (Y)", [c for c in numeric_cols if c != feature_col])
+        data = df[[x_col, y_col]].dropna()
+        x = data[x_col].values.astype(float)
+        y = data[y_col].values.astype(float)
 
-    # Extract and clean data
-    data = df[[feature_col, target_col]].dropna()
-    x = data[feature_col].values.astype(float)
-    y = data[target_col].values.astype(float)
+        st.info(f"Selected X = {x_col}, Y = {y_col}")
 
-    st.write(f"Selected **X = {feature_col}**, **Y = {target_col}**")
-    st.write(f"Number of valid data points: {len(x)}")
+        st.header("3️⃣ Train Linear Regression Model")
+        lr = st.slider("Learning Rate", 0.0001, 1.0, 0.05)
+        n_iters = st.slider("Number of Iterations", 50, 5000, 500)
 
-    if len(x) < 2:
-        st.error("Not enough data points after cleaning. Need at least 2.")
-        return
+        train_button = st.button("🚀 Train Model")
 
-    # Train button
-    st.subheader("3️⃣ Train Linear Regression with Gradient Descent")
-    run_button = st.button("🚀 Run Gradient Descent")
+        if train_button:
+            b0_hist, b1_hist, cost_hist = gradient_descent(x, y, lr, n_iters)
+            st.session_state["b0_hist"] = b0_hist
+            st.session_state["b1_hist"] = b1_hist
+            st.session_state["cost_hist"] = cost_hist
 
-    if run_button:
-        # Run GD and store in session_state
-        b0_hist, b1_hist, cost_hist = gradient_descent(x, y, lr=lr, n_iters=n_iters)
-        st.session_state["b0_hist"] = b0_hist
-        st.session_state["b1_hist"] = b1_hist
-        st.session_state["cost_hist"] = cost_hist
-        st.success("Training complete! Use the controls below to explore each step.")
+            st.success("Training complete!")
 
-    # If we already have history, show controls/plots
-    if "b0_hist" in st.session_state:
-        b0_hist = st.session_state["b0_hist"]
-        b1_hist = st.session_state["b1_hist"]
-        cost_hist = st.session_state["cost_hist"]
+        if "b0_hist" in st.session_state:
+            b0_hist = st.session_state["b0_hist"]
+            b1_hist = st.session_state["b1_hist"]
+            cost_hist = st.session_state["cost_hist"]
 
-        # Slider to choose iteration
-        st.subheader("4️⃣ Explore Training Steps")
-        max_iter = len(cost_hist) - 1
-        iter_idx = st.slider("Iteration number", 0, max_iter, max_iter, step=1)
-
-        current_b0 = b0_hist[iter_idx]
-        current_b1 = b1_hist[iter_idx]
-        current_cost = cost_hist[iter_idx]
-
-        # Closed-form comparison
-        cf_b0, cf_b1 = closed_form_solution(x, y)
-
-        colA, colB, colC = st.columns(3)
-        with colA:
-            st.metric("b₀ (Intercept)", f"{current_b0:.4f}")
-        with colB:
-            st.metric("b₁ (Slope)", f"{current_b1:.4f}")
-        with colC:
-            st.metric("Cost J (MSE/2)", f"{current_cost:.6f}")
-
-        st.caption("Note: Cost function used here is J = (1 / (2n)) * Σ (y - ŷ)²")
-
-        st.markdown("#### Comparison with Closed-form Solution")
-        st.write(
-            f"- Closed-form b₀: **{cf_b0:.4f}**,  b₁: **{cf_b1:.4f}**  "
-            f"(using normal equation / covariance method)"
-        )
-
-        # Plots: Cost vs Iterations, and Data + line
-        st.subheader("5️⃣ Visualizations")
-
-        plot_col1, plot_col2 = st.columns(2)
-
-        # Cost vs iteration
-        with plot_col1:
-            st.markdown("**Cost vs Iterations (Convergence)**")
+            st.header("4️⃣ Cost Function Analysis")
             fig1, ax1 = plt.subplots()
-            ax1.plot(range(len(cost_hist)), cost_hist)
+            ax1.plot(cost_hist)
             ax1.set_xlabel("Iteration")
             ax1.set_ylabel("Cost J")
-            ax1.set_title("Cost Function During Training")
-            ax1.grid(True)
-            ax1.axvline(iter_idx, color="gray", linestyle="--", linewidth=1)
+            ax1.set_title("Cost Reduction Over Iterations")
             st.pyplot(fig1)
 
-        # Data + regression line
-        with plot_col2:
-            st.markdown("**Data and Regression Line (for selected iteration)**")
-            fig2, ax2 = plt.subplots()
-            ax2.scatter(x, y, label="Data points")
-
-            x_line = np.linspace(np.min(x), np.max(x), 100)
-            y_line = current_b0 + current_b1 * x_line
-            ax2.plot(x_line, y_line, label=f"Line at iter {iter_idx}", linewidth=2)
-
-            ax2.set_xlabel(feature_col)
-            ax2.set_ylabel(target_col)
-            ax2.set_title("Best-fit Line During Training")
-            ax2.legend()
-            ax2.grid(True)
+            st.header("5️⃣ Gradient Descent Optimization Visualization")
+            fig2 = plot_cost_surface(b0_hist, b1_hist, x, y)
             st.pyplot(fig2)
 
-        # Detailed calculations for current iteration
-        if show_details:
-            st.subheader("6️⃣ Detailed Calculations for Selected Iteration")
+            final_b0 = b0_hist[-1]
+            final_b1 = b1_hist[-1]
+            st.success(f"Final Model:  ŷ = {final_b0:.4f} + {final_b1:.4f} × X")
 
-            # Recompute predictions at this step
-            y_pred_iter = current_b0 + current_b1 * x
-            error_iter = y - y_pred_iter
-            sq_error_iter = error_iter ** 2
+            # Predictions
+            y_pred = final_b0 + final_b1 * x
 
-            detail_df = pd.DataFrame({
-                feature_col: x,
-                target_col: y,
-                "y_pred (Ŷ)": y_pred_iter,
-                "error (y - Ŷ)": error_iter,
-                "squared error": sq_error_iter,
-            })
+            # --------------------------------------------------
+            # Performance Metrics
+            # --------------------------------------------------
+            st.header("6️⃣ Performance Metrics")
 
-            st.write(
-                "Below table shows how predictions and errors look at the selected iteration. "
-                "You can scroll horizontally if needed."
-            )
-            st.dataframe(detail_df.head(20))
+            mae = mean_absolute_error(y, y_pred)
+            mse = mean_squared_error(y, y_pred)
+            rmse = np.sqrt(mse)
+            r2 = r2_score(y, y_pred)
+            n = len(y)
+            adj_r2 = 1 - (1 - r2) * (n - 1) / (n - 2)
 
-            st.markdown("**Gradient formulas used:**")
-            st.latex(r"\frac{\partial J}{\partial b_0} = -\frac{1}{n}\sum (y_i - \hat{y}_i)")
-            st.latex(r"\frac{\partial J}{\partial b_1} = -\frac{1}{n}\sum (y_i - \hat{y}_i)x_i")
+            metrics = {
+                "Mean Absolute Error (MAE)": mae,
+                "Mean Squared Error (MSE)": mse,
+                "Root MSE (RMSE)": rmse,
+                "R² Score": r2,
+                "Adjusted R² Score": adj_r2,
+            }
 
-            # Show gradient values at this step
-            n = len(x)
-            db0_iter = -(1 / n) * np.sum(error_iter)
-            db1_iter = -(1 / n) * np.sum(error_iter * x)
+            st.json(metrics)
 
-            grad_col1, grad_col2 = st.columns(2)
-            with grad_col1:
-                st.write(f"∂J/∂b₀ at iter {iter_idx} = **{db0_iter:.6f}**")
-            with grad_col2:
-                st.write(f"∂J/∂b₁ at iter {iter_idx} = **{db1_iter:.6f}**")
+            # --------------------------------------------------
+            # Prediction on New Excel File
+            # --------------------------------------------------
+            st.header("7️⃣ Upload Another Excel File for Prediction")
 
-        # Some theory recap
-        st.subheader("7️⃣ Theory Recap (for Students)")
+            pred_file = st.file_uploader("Upload new Excel for prediction", type=["xlsx", "xls"], key="predict")
 
-        with st.expander("Show / Hide Theory"):
-            st.markdown("""
-            **Model equation:**
-
-            \\[
-            \\hat{y} = b_0 + b_1 x
-            \\]
-
-            **Cost function (Mean Squared Error):**
-
-            \\[
-            J(b_0, b_1) = \\frac{1}{2n} \\sum_{i=1}^n (y_i - \\hat{y}_i)^2
-            \\]
-
-            **Gradient Descent update rules:**
-
-            \\[
-            b_0 := b_0 - \\alpha \\frac{\\partial J}{\\partial b_0}
-            \\]
-            \\[
-            b_1 := b_1 - \\alpha \\frac{\\partial J}{\\partial b_1}
-            \\]
-
-            where
-
-            \\[
-            \\frac{\\partial J}{\\partial b_0} = -\\frac{1}{n} \\sum (y_i - \\hat{y}_i)
-            \\]
-            \\[
-            \\frac{\\partial J}{\\partial b_1} = -\\frac{1}{n} \\sum (y_i - \\hat{y}_i) x_i
-            \\]
-
-            - Learning rate **α** controls step size.
-            - As iterations increase, **cost should generally go down**.
-            - When cost stops decreasing and parameters stabilize, we say the algorithm has **converged**.
-            """)
-
+            if pred_file:
+                pred_df = pd.read_excel(pred_file)
+                if x_col not in pred_df.columns:
+                    st.error(f"'{x_col}' not found in uploaded file.")
+                else:
+                    pred_df["Predicted_Y"] = final_b0 + final_b1 * pred_df[x_col]
+                    st.write("### Prediction Results")
+                    st.dataframe(pred_df.head())
+                    st.download_button(
+                        label="Download Predictions",
+                        data=pred_df.to_csv(index=False),
+                        file_name="predictions.csv",
+                        mime="text/csv"
+                    )
 
 if __name__ == "__main__":
     main()
